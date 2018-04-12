@@ -1,0 +1,11 @@
+[package]
+name = "osc-gpio-bridge"
+version = "0.1.0"
+authors = ["Sam Gillespie <samgwise@gmail.com>"]
+
+[dependencies]
+rppal = "0.4"
+rosc = "0.1.5"
+serde = "1.0"
+serde_derive = "1.0"
+serde_yaml = "0.7"
