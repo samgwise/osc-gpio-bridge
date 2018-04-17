@@ -1,7 +1,15 @@
 ---
   host: 0.0.0.0
   port: 30010
+  poll_ms: 500
   clients:
     - host: 127.0.0.1
       port: 30001
+  pins:
+    - pin: 18
+      io: Writeable
+      state: false
+    - pin: 17
+      io: Readable
+      state: false
 ...

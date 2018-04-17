@@ -19,9 +19,10 @@ use std::str::FromStr;
 
 mod config;
 
-// The GPIO module uses BCM pin numbering. BCM 18 equates to physical pin 12.
-const GPIO_LED: u8 = 18;
-const GPIO_IN: u8 = 17;
+pub struct PinState {
+    state:  Level,
+    pin:    u8,
+}
 
 fn main() {
     // Handle args
@@ -69,42 +70,68 @@ fn main() {
         client_addrs.push(address);
     }
 
-    // Setup socket
-    let socket = UdpSocket::bind(host_address).expect( format!("Unable to provision socket: {}", host_address).as_str() );
-    // println!("Listening on {}...", host_address);
-
     // Start talking to the GPIO
     let device_info = DeviceInfo::new().expect("Unable to obtain device info");
     println!( "Model: {} (SoC: {})", device_info.model(), device_info.soc() );
 
     let mut gpio = Gpio::new().expect("Error intitalising GPIO interface");
-    gpio.set_mode(GPIO_LED, Mode::Output);
-    gpio.set_mode(GPIO_IN, Mode::Input);
 
-    let mut last_in_level = Level::Low;
+    // Setup our GPIO and pin states
+    let mut pins_readable   :Vec<PinState> = Vec::new();
+    let mut pins_writeable  :Vec<PinState> = Vec::new();
+    for pin in &config.pins {
+        let state = PinState { state: bool_to_level(&pin.state), pin: pin.pin };
+        match pin.io {
+            config::PinIO::Writeable => {
+                gpio.set_mode(pin.pin, Mode::Output);
+                pins_writeable.push(state)
+            },
+            config::PinIO::Readable  => {
+                gpio.set_mode(pin.pin, Mode::Input);
+                pins_readable.push(state)
+            },
+        }
+    }
+
+    // Setup socket
+    let socket = UdpSocket::bind(host_address).expect( format!("Unable to provision socket: {}", host_address).as_str() );
+    // println!("Listening on {}...", host_address);
+
+
     loop {
-        gpio.write(GPIO_LED, Level::High);
-        thread::sleep( Duration::from_millis(500) );
-        gpio.write(GPIO_LED, Level::Low);
-        last_in_level = match gpio.read(GPIO_IN) {
-            Ok (level)  => level,
-            Err (e)     => {
-                println!("Failed to read from pin {}, reason: {:?}", GPIO_IN, e);
-                last_in_level
-            }
-        };
-        println!("Last recorded level on pin {}: {:?}", GPIO_IN, last_in_level);
-        let msg_buf = encoder::encode(&OscPacket::Message(OscMessage {
-              addr: format!("/gpio/{}", GPIO_IN).to_string(),
-              args: Some( vec![OscType::Bool( level_to_bool(&last_in_level) )] ),
-          })).unwrap();
+        thread::sleep( Duration::from_millis(config.poll_ms) );
 
-        for addr in &client_addrs {
-            match socket.send_to(&msg_buf, addr) {
-                Ok (_) => (),
-                Err (e) => {
-                    println!("Error sending to client: {}, reason: {}", addr, e);
-                    ()
+        for pin in &pins_writeable {
+            gpio.write(pin.pin, pin.state)
+        }
+
+        for pin in &mut pins_readable {
+            let current_level = match gpio.read(pin.pin) {
+                Ok (level)  => level,
+                Err (e)     => {
+                    println!("Failed to read from pin {}, reason: {:?}", pin.pin, e);
+                    // Return last level instead to keep us rolling
+                    pin.state
+                }
+            };
+
+            if pin.state != current_level {
+                println!("Change in level on pin {}: {:?} => {:?}", pin.pin, pin.state, current_level);
+                pin.state = current_level;
+
+                let msg_buf = encoder::encode(&OscPacket::Message(OscMessage {
+                      addr: format!("/gpio/{}", pin.pin).to_string(),
+                      args: Some( vec![OscType::Bool( level_to_bool(&current_level) )] ),
+                  })).unwrap();
+
+                for addr in &client_addrs {
+                    match socket.send_to(&msg_buf, addr) {
+                        Ok (_) => (),
+                        Err (e) => {
+                            println!("Error sending to client: {}, reason: {}", addr, e);
+                            ()
+                        }
+                    }
                 }
             }
         }
@@ -114,6 +141,13 @@ fn main() {
 fn level_to_bool(level: &Level) -> bool {
     match level {
         &Level::Low  => false,
-        &Level::High   => true,
+        &Level::High => true,
+    }
+}
+
+fn bool_to_level(level: &bool) -> Level {
+    match level {
+        &false => Level::Low,
+        &true  => Level::High,
     }
 }

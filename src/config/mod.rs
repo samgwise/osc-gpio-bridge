@@ -4,6 +4,18 @@ use std::io::prelude::*;
 use serde_yaml;
 
 // Configuration structs
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum PinIO {
+    Readable,
+    Writeable,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct PinConfig {
+    pub state:  bool,
+    pub pin:    u8,
+    pub io:     PinIO,
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct OscClient {
@@ -16,6 +28,8 @@ pub struct OscConfig {
     pub host:                   String,
     pub port:                   u32,
     pub clients:                Vec<OscClient>,
+    pub poll_ms:                u64,
+    pub pins:                   Vec<PinConfig>,
 }
 
 pub fn load_from_file(file_name: &String) -> Result<OscConfig, String> {
