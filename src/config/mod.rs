@@ -26,7 +26,8 @@ pub struct OscClient {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct OscConfig {
     pub host:                   String,
-    pub port:                   u32,
+    pub port_in:                u32,
+    pub port_out:               u32,
     pub clients:                Vec<OscClient>,
     pub poll_ms:                u64,
     pub pins:                   Vec<PinConfig>,
